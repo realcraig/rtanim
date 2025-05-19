@@ -1,0 +1,17 @@
+{
+  "nose": "mixamorigHead",
+  "left shoulder": "mixamorigLeftShoulder",
+  "right shoulder": "mixamorigRightShoulder",
+  "left elbow": "mixamorigLeftForeArm",
+  "right elbow": "mixamorigRightForeArm",
+  "left wrist": "mixamorigLeftHand",
+  "right wrist": "mixamorigRightHand",
+  "left hip": "mixamorigLeftUpLeg",
+  "right hip": "mixamorigRightUpLeg",
+  "left knee": "mixamorigLeftLeg",
+  "right knee": "mixamorigRightLeg",
+  "left ankle": "mixamorigLeftFoot",
+  "right ankle": "mixamorigRightFoot",
+  "left foot index": "mixamorigLeftToeBase",
+  "right foot index": "mixamorigRightToeBase"
+} 
