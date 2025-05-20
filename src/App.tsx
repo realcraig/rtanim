@@ -2,10 +2,12 @@ import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { GLTFLoader, OrbitControls, TransformControls } from 'three-stdlib'
 import './App.css'
-import { CCDIKSolver } from 'three/addons/animation/CCDIKSolver.js'
 import boneMap from '../bone_map.json'
+import { CCDIKHelper, CCDIKSolver } from 'three/addons/animation/CCDIKSolver.js'
 import { Pose, POSE_LANDMARKS } from '@mediapipe/pose'
 import { Camera } from '@mediapipe/camera_utils'
+
+const debug = false;
 
 let camera: THREE.PerspectiveCamera
 let renderer: THREE.WebGLRenderer
@@ -13,14 +15,17 @@ let scene: THREE.Scene
 let controls: OrbitControls
 let modelLoaded = false
 
-let ccdik: CCDIKSolver
 let targetMap: Record<string, THREE.Object3D> = {}
 
-type JointConstraint = {
-  limitation: THREE.Vector3
-  rotationMin: THREE.Vector3
-  rotationMax: THREE.Vector3
-}
+let ccdik: CCDIKSolver;
+
+// Define a discriminated union for joint constraints
+type JointConstraint = { 
+    limitation : THREE.Vector3; 
+    rotationMin: THREE.Vector3;
+    rotationMax: THREE.Vector3;
+    enabled: boolean;
+};
 
 function createTarget(bone: THREE.Bone, parent: THREE.Object3D) {
   const gizmo = new TransformControls(camera, renderer.domElement)
@@ -44,49 +49,149 @@ function createTarget(bone: THREE.Bone, parent: THREE.Object3D) {
 }
 
 function buildChain(
-  skeleton: THREE.Skeleton,
-  boneNames: string[],
-  targetName: string,
-  parent: THREE.Object3D,
-  constraints?: JointConstraint[]
+    skeleton: THREE.Skeleton,
+    boneNames: string[],
+    targetName: string,
+    parent: THREE.Object3D,
+    constraints?: {[key: string]: JointConstraint}
 ) {
-  const idx = boneNames.map(n => skeleton.bones.findIndex(b => b.name.endsWith(n)))
-  const links = idx.slice(0, -1).reverse().map((i, j) => {
-    const constraint = constraints && constraints[j] ? constraints[j] : {
-      limitation: undefined,
-      rotationMin: undefined,
-      rotationMax: undefined
-    }
-    return {
-      index: i,
-      limitation: constraint.limitation,
-      rotationMin: constraint.rotationMin,
-      rotationMax: constraint.rotationMax
-    }
-  })
-  const target = createTarget(skeleton.bones[idx[idx.length - 1]!], parent)
-  target.name = targetName
-  skeleton.bones.push(target)
-  return { target: skeleton.bones.length - 1, effector: idx[idx.length - 1]!, links }
+    const idx = boneNames.map(n => skeleton.bones.findIndex(b => b.name.endsWith(n)));
+    const links = idx.slice(0, -1).reverse().map((i) => {
+        const boneName = skeleton.bones[i]?.name;
+
+        const constraintKey = Object.keys(constraints || {}).find(key => boneName.endsWith(key));
+        const constraint = constraintKey ? constraints![constraintKey] : { limitation: undefined, rotationMin: undefined, rotationMax: undefined, enabled: undefined };;
+        
+        if (constraint) {
+            console.log(`${boneName} has constraint`)
+            console.log(constraint)
+        }
+
+        return {
+            index: i,
+            limitation: constraint.limitation || undefined,
+            rotationMin: constraint.rotationMin || undefined,
+            rotationMax: constraint.rotationMax || undefined,
+            enabled: constraint.enabled || undefined
+        };            
+    });
+    const target = createTarget(skeleton.bones[idx[idx.length - 1]!], parent);
+    target.name = targetName;
+    skeleton.bones.push(target);
+    return { target: skeleton.bones.length - 1, effector: idx[idx.length - 1]!, links };
 }
 
 function setupCCDSolverIK(model: THREE.Object3D) {
-  const skinnedMesh = model.getObjectByName('mesh') as THREE.SkinnedMesh
-  if (!skinnedMesh) return
+    const skinnedMesh = model.getObjectByName('mesh') as THREE.SkinnedMesh;
+    if (!skinnedMesh) return;
 
-  const skeleton = skinnedMesh.skeleton
-  const hips = model.getObjectByName('mixamorigHips') as THREE.Bone
+    // Find bone indices in the skeleton
+    const skeleton = skinnedMesh.skeleton;
 
-  const chains = [
-    buildChain(skeleton, ['Spine', 'Spine1', 'Spine2', 'RightShoulder', 'RightArm', 'RightForeArm', 'RightHand'], 'mixamorigRightHand', hips),
-    buildChain(skeleton, ['Spine', 'Spine1', 'Spine2', 'LeftShoulder', 'LeftArm', 'LeftForeArm', 'LeftHand'], 'mixamorigLeftHand', hips),
-    buildChain(skeleton, ['RightUpLeg', 'RightLeg', 'RightFoot', 'RightToeBase'], 'mixamorigRightToeBase', hips),
-    buildChain(skeleton, ['LeftUpLeg', 'LeftLeg', 'LeftFoot', 'LeftToeBase'], 'mixamorigLeftToeBase', hips),
-    buildChain(skeleton, ['Spine', 'Spine1', 'Spine2', 'Neck', 'Head'], 'mixamorigHead', hips)
-  ]
+    const hips = model.getObjectByName('mixamorigHips') as THREE.Bone;
 
-  skinnedMesh.bind(skeleton)
-  ccdik = new CCDIKSolver(skinnedMesh, chains)
+    const constraints = {        
+        "RightShoulder":{
+            rotationMin: new THREE.Vector3(-Math.PI / 2, 0, 0),
+            rotationMax: new THREE.Vector3(Math.PI / 4, Math.PI / 2, Math.PI * 0.9),
+            enabled: true
+        }, 
+        "RightArm":{
+            rotationMin: new THREE.Vector3(0, 0, 0),
+            rotationMax: new THREE.Vector3(0, 0, 0),
+            enabled: true
+        }, 
+        "RightForeArm":{
+            rotationMin: new THREE.Vector3(-Math.PI / 4, -Math.PI / 2, -Math.PI * 0.8),
+            rotationMax: new THREE.Vector3(Math.PI / 4, Math.PI / 2, Math.PI / 32),
+            enabled: true
+        }, 
+        "LeftShoulder":{
+            rotationMin: new THREE.Vector3(-Math.PI / 4, -Math.PI / 2, -Math.PI * 0.9),
+            rotationMax: new THREE.Vector3(Math.PI / 2, 0, 0),
+            enabled: true
+        }, 
+        "LeftArm":{
+            rotationMin: new THREE.Vector3(0, 0, 0),
+            rotationMax: new THREE.Vector3(0, 0, 0),
+            enabled: true
+        }, 
+        "LeftForeArm":{
+            rotationMin: new THREE.Vector3(-Math.PI / 4, -Math.PI / 2, -Math.PI / 32),
+            rotationMax: new THREE.Vector3(Math.PI / 4, Math.PI / 2, Math.PI * 0.8),
+            enabled: true
+        }, 
+        "Spine": {
+            rotationMin: new THREE.Vector3(-Math.PI / 32, -Math.PI / 32, -Math.PI / 32),
+            rotationMax: new THREE.Vector3(Math.PI / 32, Math.PI / 32, Math.PI / 32),
+            enabled: true
+        }, 
+        "Spine1": {
+            rotationMin: new THREE.Vector3(-Math.PI / 32, -Math.PI / 32, -Math.PI / 32),
+            rotationMax: new THREE.Vector3(Math.PI / 32, Math.PI / 32, Math.PI / 32),
+            enabled: true
+        }, 
+        "Spine2": {
+            rotationMin: new THREE.Vector3(-Math.PI / 32, -Math.PI / 32, -Math.PI / 32),
+            rotationMax: new THREE.Vector3(Math.PI / 32, Math.PI / 32, Math.PI / 32),
+            enabled: true
+        }, 
+        "Neck": {
+            rotationMin: new THREE.Vector3(-Math.PI / 32, -Math.PI / 32, -Math.PI / 32),
+            rotationMax: new THREE.Vector3(Math.PI / 32, Math.PI / 32, Math.PI / 32),
+            enabled: true
+        } , 
+        "Head": {
+            rotationMin: new THREE.Vector3(-Math.PI / 32, -Math.PI / 32, -Math.PI / 32),
+            rotationMax: new THREE.Vector3(Math.PI / 32, Math.PI / 32, Math.PI / 32),
+            enabled: true
+        },
+        "RightUpLeg": {
+            rotationMin: new THREE.Vector3(-Math.PI * 0.8, 0, 2.54),
+            rotationMax: new THREE.Vector3(Math.PI / 32, 0.13, 3.12),
+            enabled: true
+        },
+        "RightLeg": {
+            rotationMin: new THREE.Vector3(-1.54, 0, 0.04),
+            rotationMax: new THREE.Vector3(-0.19, 0, 0.08),
+            enabled: true
+        },
+        "RightFoot": {
+            rotationMin: new THREE.Vector3(0.12, 0.10, -0.12),
+            rotationMax: new THREE.Vector3(1.95, -0.21, -0.22),
+            enabled: true
+        },        
+       "LeftUpLeg": {
+            rotationMin: new THREE.Vector3(-Math.PI * 0.8, 0, -3.12),
+            rotationMax: new THREE.Vector3(Math.PI / 32, -0.13, -2.54),
+            enabled: true
+        },
+        "LeftLeg": {
+            rotationMin: new THREE.Vector3(-1.54, 0, -0.08),
+            rotationMax: new THREE.Vector3(-0.19, 0, -0.04),
+            enabled: true
+        },
+        "LeftFoot": {
+            rotationMin: new THREE.Vector3(0.12, 0.10, -0.22),
+            rotationMax: new THREE.Vector3(1.95, -0.21, 0.12),
+            enabled: true
+        }
+    }
+    // 1. list every end–effector you care about    
+    const chains = [
+        buildChain(skeleton, ['Spine', 'Spine1', 'Spine2', 'RightShoulder','RightArm', 'RightForeArm', 'RightHand'], 'RightHandTarget', hips, constraints),
+        buildChain(skeleton, ['Spine', 'Spine1', 'Spine2', 'LeftShoulder',  'LeftArm',  'LeftForeArm',  'LeftHand'],  'LeftHandTarget', hips, constraints),
+        buildChain(skeleton, ['RightUpLeg','RightLeg','RightFoot','RightToeBase'], 'RightFootTarget', hips, constraints),
+        buildChain(skeleton, ['LeftUpLeg', 'LeftLeg', 'LeftFoot', 'LeftToeBase'],  'LeftFootTarget', hips, constraints),
+        buildChain(skeleton, ['Spine', 'Spine1', 'Spine2','Neck','Head'], 'HeadAimTarget', hips, constraints)
+    ];
+  
+    skinnedMesh.bind(skeleton);
+
+    ccdik = new CCDIKSolver(skinnedMesh, chains);
+
+    const helper = new CCDIKHelper(skinnedMesh, chains, 0.025);
+    scene.add(helper);
 }
 
 function startPoseTracking() {
@@ -141,6 +246,8 @@ function startPoseTracking() {
   camera.start()
 }
 
+const debugLeg = "LeftFoot";
+
 function App() {
   const mountRef = useRef<HTMLDivElement>(null)
 
@@ -187,6 +294,46 @@ function App() {
       model.position.z -= center.z
       model.position.y -= box.min.y
       scene.add(model)
+        if (modelLoaded) return;
+        modelLoaded = true;
+        model = gltf.scene
+        setupCCDSolverIK(model);
+        
+        // Center the model horizontally and place feet at y=0
+        const box = new THREE.Box3().setFromObject(model)
+        const center = box.getCenter(new THREE.Vector3())
+        const size = box.getSize(new THREE.Vector3())
+        model.position.x -= center.x
+        model.position.z -= center.z
+        model.position.y -= box.min.y // move feet to y=0
+        console.log("loaded model")
+        scene.add(model)
+
+        if (debug) {
+            // Add axes helper to each bone
+            const skinnedMesh = model.getObjectByName('mesh') as THREE.SkinnedMesh;
+            if (skinnedMesh) {
+                // Set wireframe for all materials
+                const setWireframe = (mat: THREE.Material) => {
+                    if (mat instanceof THREE.MeshStandardMaterial || mat instanceof THREE.MeshBasicMaterial) {
+                        mat.wireframe = true;
+                    }
+                };
+                if (Array.isArray(skinnedMesh.material)) {
+                    skinnedMesh.material.forEach(setWireframe);
+                } else {
+                    setWireframe(skinnedMesh.material);
+                }
+                skinnedMesh.skeleton.bones.forEach(bone => {
+
+                    if (bone.name.endsWith(debugLeg)) {
+                        console.log(`${bone.name} ${bone.rotation.x}, ${bone.rotation.y}, ${bone.rotation.z}`)
+                        const axes = new THREE.AxesHelper(1);
+                        bone.add(axes);
+                    }
+                });
+            }
+        }
 
       const skeletonHelper = new THREE.SkeletonHelper(model)
       ;(skeletonHelper.material as THREE.LineBasicMaterial).linewidth = 2
@@ -205,7 +352,26 @@ function App() {
     camera.position.set(0, 1.5, 2.2)
     camera.lookAt(0, 0, 0)
 
+    let ticks = 0
+    // Animation loop
     const animate = () => {
+        if (model) {
+            ccdik?.update();
+
+            if (debug && ticks % 60 === 0) {
+                const skinnedMesh = model.getObjectByName('mesh') as THREE.SkinnedMesh;
+                skinnedMesh.skeleton.bones.forEach(bone => {
+                    if (bone.name.endsWith(debugLeg)) {
+                        console.log(`${bone.name} ${bone.rotation.x}, ${bone.rotation.y}, ${bone.rotation.z}`)
+                    }
+                });
+            }
+            ticks++;
+        }
+        controls.update()
+        renderer.render(scene, camera)
+        
+        requestAnimationFrame(animate)
       if (model) {
         ccdik?.update()
       }
