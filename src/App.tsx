@@ -80,7 +80,7 @@ function setupCCDSolverIK(model: THREE.Object3D) {
         buildChain(skeleton, ['Spine', 'Spine1', 'Spine2', 'LeftShoulder',  'LeftArm',  'LeftForeArm',  'LeftHand'],  'LeftHandTarget', hips),
         buildChain(skeleton, ['RightUpLeg','RightLeg','RightFoot','RightToeBase'], 'RightFootTarget', hips),
         buildChain(skeleton, ['LeftUpLeg', 'LeftLeg', 'LeftFoot', 'LeftToeBase'],  'LeftFootTarget', hips),
-        buildChain(skeleton, ['Spine2','Neck','Head'], 'HeadAimTarget', hips)
+        buildChain(skeleton, ['Spine', 'Spine1', 'Spine2','Neck','Head'], 'HeadAimTarget', hips)
     ];
   
     skinnedMesh.bind(skeleton);

@@ -1,0 +1,23 @@
+- mixamorig:Hips:
+  - mixamorig:Spine:
+    - mixamorig:Spine1:
+      - mixamorig:Spine2:
+        - mixamorig:Neck:
+          - mixamorig:Head:
+          - mixamorig:Head:
+        - mixamorig:LeftShoulder:
+          - mixamorig:LeftArm:
+            - mixamorig:LeftForeArm:
+              - mixamorig:LeftHand:
+        - mixamorig:RightShoulder:
+          - mixamorig:RightArm:
+            - mixamorig:RightForeArm:
+              - mixamorig:RightHand:
+  - mixamorig:LeftUpLeg:
+    - mixamorig:LeftLeg:
+      - mixamorig:LeftFoot:
+        - mixamorig:LeftToeBase:
+  - mixamorig:RightUpLeg:
+    - mixamorig:RightLeg:
+      - mixamorig:RightFoot:
+        - mixamorig:RightToeBase:
