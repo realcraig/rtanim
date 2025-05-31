@@ -1,1 +1,1 @@
-# Realtime Animation using Media Pipe and Inverse Kinematics
+# Realtime Animation using MediaPipe and inverse kinematics
